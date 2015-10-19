@@ -28,6 +28,8 @@ using afsgrpc::GetAttrRequest;
 using afsgrpc::GetAttrResponse;
 using afsgrpc::MkDirRequest;
 using afsgrpc::MkDirResponse;
+using afsgrpc::RmDirRequest;
+using afsgrpc::RmDirResponse;
 using afsgrpc::MkNodRequest;
 using afsgrpc::MkNodResponse;
 using afsgrpc::ReadRequest;
@@ -42,6 +44,11 @@ using afsgrpc::AccessResponse;
 using namespace std;
 
 class AfsServiceImpl final : public AfsService::Service {
+
+
+// Names are same as proto file definitions
+// All take a ServerContext: object defined by gRPC
+//	* First param is input to RPC, second param is output
 
   Status SendString(ServerContext *context, const StringMessage *request,
                     StringMessage *reply) override {
@@ -70,6 +77,8 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  // These functions need to put the stuff into stbuf
+  // Then we need to ship stuff back to the client
   Status GetAttr(ServerContext *context, const GetAttrRequest *request,
                  GetAttrResponse *response) override {
     string path = serverpath + request->path();
@@ -94,7 +103,6 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
-  // not working yet
   Status MkDir(ServerContext *context, const MkDirRequest *request,
                MkDirResponse *response) override {
     string path = serverpath + request->path();
@@ -102,6 +110,16 @@ class AfsServiceImpl final : public AfsService::Service {
     int res = mkdir(path.c_str(), request->mode());
     response->set_res(res);
     cout << "MKDIR RES: " << res << endl;
+    return Status::OK;
+  }
+
+  Status RmDir(ServerContext *context, const RmDirRequest *request,
+               RmDirResponse *response) override {
+    string path = serverpath + request->path();
+    cout << "RMDIR PATH: " << path << endl;
+    int res = rmdir(path.c_str());
+    response->set_res(res);
+    cout << "RMDIR RES: " << res << endl;
     return Status::OK;
   }
 
@@ -201,7 +219,8 @@ class AfsServiceImpl final : public AfsService::Service {
 
 void RunServer() {
   string server_address("0.0.0.0:50051");
-  AfsServiceImpl service("/home/justin/cs739/p2/afs/serverdir");
+  // This is where the files live on the server.
+  AfsServiceImpl service("/home/mark/Dropbox/UW/CS739/cs739p2/serverDir");
 
   ServerBuilder builder;
 

@@ -34,6 +34,8 @@ using afsgrpc::GetAttrRequest;
 using afsgrpc::GetAttrResponse;
 using afsgrpc::MkDirRequest;
 using afsgrpc::MkDirResponse;
+using afsgrpc::RmDirRequest;
+using afsgrpc::RmDirResponse;
 using afsgrpc::MkNodRequest;
 using afsgrpc::MkNodResponse;
 using afsgrpc::ReadRequest;
@@ -47,6 +49,7 @@ using afsgrpc::AccessResponse;
 
 using namespace std;
 
+// Defines a stub which you call into to call server functions
 class AfsClient {
   public:
     AfsClient(shared_ptr<Channel> channel)
@@ -104,6 +107,20 @@ class AfsClient {
       MkDirResponse response;
       ClientContext context;
       Status status = stub_->MkDir(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
+	RmDirResponse RmDir(const string &path) {
+      RmDirRequest request;
+      request.set_path(path);
+
+      RmDirResponse response;
+      ClientContext context;
+      Status status = stub_->RmDir(&context, request, &response);
       if (status.ok()) {
         return response;
       }
@@ -286,6 +303,16 @@ static int client_mkdir(const char *path, mode_t mode) {
   return 0;
 }
 
+static int client_rmdir(const char *path) {
+  string stringpath(path);
+  RmDirResponse response = client.RmDir(stringpath);
+
+  int res = response.res();
+  if (res == -1) return -errno;
+ 
+  return 0;
+}
+
 static int client_write(const char *path, const char *buf, size_t size,
                         off_t offset, struct fuse_file_info *fi) {
   (void) fi;
@@ -305,6 +332,7 @@ static int client_access(const char *path, int mask) {
   return 0; 
 }
 
+// All these attributes must appear here in this exact order!
 static struct fuse_operations client_oper = {
   getattr: client_getattr,
   readlink: NULL,
@@ -312,7 +340,7 @@ static struct fuse_operations client_oper = {
   mknod: client_mknod,
   mkdir: client_mkdir,
   unlink: NULL,
-  rmdir: NULL,
+  rmdir: client_rmdir,
   symlink: NULL,
   rename: NULL,
   link: NULL,

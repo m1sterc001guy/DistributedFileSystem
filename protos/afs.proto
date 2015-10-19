@@ -8,6 +8,12 @@ service AfsService {
   rpc SendString (StringMessage) returns (StringMessage) {}
   rpc ReadDir (ReadDirMessage) returns (ReadDirReply) {}
   rpc GetAttr (GetAttrRequest) returns (GetAttrResponse) {}
+  rpc OpenFile (OpenRequest) returns (OpenResponse) {}
+  rpc ReadFile (ReadRequest) returns (ReadResponse) {}
+
+  // not working yet. Have to get write() working first
+  rpc MkDir (MkDirRequest) returns (MkDirResponse) {}
+  rpc MkNod (MkNodRequest) returns (MkNodResponse) {}
 }
 
 message StringMessage {
@@ -43,4 +49,43 @@ message GetAttrResponse {
   int64 blksize = 12;
   int64 blocks = 13;
   int32 res = 14;
+}
+
+message MkDirRequest {
+  string path = 1;
+  int32 mode = 2;
+}
+
+message MkDirResponse {
+  int32 res = 1;
+}
+
+message MkNodRequest {
+  string path = 1;
+  int32 mode = 2;
+  int64 rdev = 3;
+}
+
+message MkNodResponse {
+  int32 res = 1;
+}
+
+message ReadRequest {
+  string path = 1;
+  int64 size = 2;
+  int64 offset = 3;
+}
+
+message ReadResponse {
+  string buf = 1;
+  int32 res = 2;
+}
+
+message OpenRequest {
+  string path = 1;
+  int32 flags = 2;
+}
+
+message OpenResponse {
+  int32 res = 1;
 }

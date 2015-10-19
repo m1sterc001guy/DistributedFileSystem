@@ -6,6 +6,9 @@
 #include <dirent.h>
 #include <errno.h>
 #include <algorithm>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <grpc++/grpc++.h>
 
@@ -23,6 +26,14 @@ using afsgrpc::ReadDirReply;
 using afsgrpc::AfsService;
 using afsgrpc::GetAttrRequest;
 using afsgrpc::GetAttrResponse;
+using afsgrpc::MkDirRequest;
+using afsgrpc::MkDirResponse;
+using afsgrpc::MkNodRequest;
+using afsgrpc::MkNodResponse;
+using afsgrpc::ReadRequest;
+using afsgrpc::ReadResponse;
+using afsgrpc::OpenRequest;
+using afsgrpc::OpenResponse;
 
 using namespace std;
 
@@ -38,10 +49,7 @@ class AfsServiceImpl final : public AfsService::Service {
 
   Status ReadDir(ServerContext *context, const ReadDirMessage *request,
                  ReadDirReply *reply) override {
-    //this path isnt correct, needs to be appended to root of server directory
     string path = serverpath + request->path();
-    cout << "READDIR PATH: " << path << endl;
-    //string path = "/home/justin/cs739/p2/afs/serverdir";
 
     DIR *dp;
     struct dirent *de;
@@ -60,25 +68,9 @@ class AfsServiceImpl final : public AfsService::Service {
 
   Status GetAttr(ServerContext *context, const GetAttrRequest *request,
                  GetAttrResponse *response) override {
-    cout << "GetAttr called!!" << endl;
     string path = serverpath + request->path();
-    cout << "GETATTR PATH: " << path << endl;
     struct stat stbuf;
     int res = lstat(path.c_str(), &stbuf);
-    
-    cout << "st_dev: " << stbuf.st_dev << endl;
-    cout << "st_ino: " << stbuf.st_ino << endl;
-    cout << "st_mode: " << stbuf.st_mode << endl;
-    cout << "st_nlink: " << stbuf.st_nlink << endl;
-    cout << "st_uid: " << stbuf.st_uid << endl;
-    cout << "st_gid: " << stbuf.st_gid << endl;
-    cout << "st_rdev: " << stbuf.st_rdev << endl;
-    cout << "st_size: " << stbuf.st_size << endl;
-    cout << "st_atime: " << stbuf.st_atime << endl;
-    cout << "st_mtime: " << stbuf.st_mtime << endl;
-    cout << "st_ctime: " << stbuf.st_ctime << endl;
-    cout << "st_blksize: " << stbuf.st_blksize << endl;
-    cout << "st_blocks: " << stbuf.st_blocks << endl;
 
     response->set_dev(stbuf.st_dev);
     response->set_ino(stbuf.st_ino);
@@ -95,6 +87,72 @@ class AfsServiceImpl final : public AfsService::Service {
     response->set_blocks(stbuf.st_blocks);
     response->set_res(res);
 
+    return Status::OK;
+  }
+
+  // not working yet
+  Status MkDir(ServerContext *context, const MkDirRequest *request,
+               MkDirResponse *response) override {
+    string path = serverpath + request->path();
+    cout << "MKDIR PATH: " << path << endl;
+    int res = mkdir(path.c_str(), request->mode());
+    response->set_res(res);
+    cout << "MKDIR RES: " << res << endl;
+    return Status::OK;
+  }
+
+  // not working yet
+  Status MkNod(ServerContext *context, const MkNodRequest *request,
+               MkNodResponse *response) override {
+    string path = serverpath + request->path();
+    int res;
+    mode_t mode = request->mode();
+    dev_t rdev = request->rdev();
+
+    if (S_ISREG(mode)) {
+      res = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, mode);
+      if (res >= 0) res = close(res);
+    } else if (S_ISFIFO(mode)) {
+      res = mkfifo(path.c_str(), mode);
+    } else {
+      res = mknod(path.c_str(), mode, rdev);
+    }
+
+    response->set_res(res);
+    return Status::OK;
+  }
+
+  Status ReadFile(ServerContext *context, const ReadRequest *request,
+                  ReadResponse *response) override {
+    int fd;
+    int res;
+    string path = serverpath + request->path();
+
+    fd = open(path.c_str(), O_RDONLY);
+    if (fd == -1) return Status::CANCELLED;
+ 
+    size_t size = request->size();
+    off_t offset = request->offset();
+    char buf[size];
+
+    res = pread(fd, &buf, size, offset);
+    if (res == -1) return Status::CANCELLED;
+    close(fd);
+
+    string returnBuf(buf);
+    response->set_buf(returnBuf);
+    response->set_res(res);
+
+    return Status::OK;
+  }
+
+  Status OpenFile(ServerContext *context, const OpenRequest *request,
+                  OpenResponse *response) override {
+    int res;
+    string path = serverpath + request->path();
+    res = open(path.c_str(), request->flags());
+    response->set_res(res);
+    close(res);
     return Status::OK;
   }
 

@@ -32,6 +32,14 @@ using afsgrpc::ReadDirMessage;
 using afsgrpc::ReadDirReply;
 using afsgrpc::GetAttrRequest;
 using afsgrpc::GetAttrResponse;
+using afsgrpc::MkDirRequest;
+using afsgrpc::MkDirResponse;
+using afsgrpc::MkNodRequest;
+using afsgrpc::MkNodResponse;
+using afsgrpc::ReadRequest;
+using afsgrpc::ReadResponse;
+using afsgrpc::OpenRequest;
+using afsgrpc::OpenResponse;
 
 using namespace std;
 
@@ -87,6 +95,68 @@ class AfsClient {
       return response;
     }
 
+    MkDirResponse MkDir(const string &path, mode_t mode) {
+      MkDirRequest request;
+      request.set_path(path);
+      request.set_mode(mode);
+
+      MkDirResponse response;
+      ClientContext context;
+      Status status = stub_->MkDir(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
+    MkNodResponse MkNod(const string &path, mode_t mode, dev_t rdev) {
+      MkNodRequest request;
+      request.set_path(path);
+      request.set_mode(mode);
+      request.set_rdev(rdev);
+
+      MkNodResponse response;
+      ClientContext context;
+      Status status = stub_->MkNod(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
+    ReadResponse ReadFile(const string &path, size_t size, off_t offset) {
+      ReadRequest request;
+      request.set_path(path);
+      request.set_size(size);
+      request.set_offset(offset);
+
+      ReadResponse response;
+      ClientContext context;
+      Status status = stub_->ReadFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do someting on failure here
+      return response;
+    }
+
+    OpenResponse OpenFile(const string &path, int flags) {
+      OpenRequest request;
+      request.set_path(path);
+      request.set_flags(flags);
+
+      OpenResponse response;
+      ClientContext context;
+      Status status = stub_->OpenFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
   private:
     unique_ptr<AfsService::Stub> stub_;
 
@@ -96,26 +166,8 @@ class AfsClient {
 static AfsClient client(grpc::CreateChannel("localhost:50051", grpc::InsecureCredentials()));
 
 static int client_getattr(const char *path, struct stat *stbuf) {
-  //client.SendString("getattr was called!");
-  //cout << "getattr was called!" << endl;
   string stringpath(path);
   GetAttrResponse response = client.GetAttr(path);
-
-  /*
-  cout << "st_dev: " << response.dev() << endl;
-  cout << "st_ino: " << response.ino() << endl;
-  cout << "st_mode: " << response.mode() << endl;
-  cout << "st_nlink: " << response.nlink() << endl;
-  cout << "st_uid: " << response.uid() << endl;
-  cout << "st_gid: " << response.gid() << endl;
-  cout << "st_rdev: " << response.rdev() << endl;
-  cout << "st_size: " << response.size() << endl;
-  cout << "st_atime: " << response.atime() << endl;
-  cout << "st_mtime: " << response.mtime() << endl;
-  cout << "st_ctime: " << response.ctime() << endl;
-  cout << "st_blksize: " << response.blksize() << endl;
-  cout << "st_blocks: " << response.blocks() << endl;
-  */
 
   stbuf->st_dev = response.dev();
   stbuf->st_ino = response.ino();
@@ -138,40 +190,28 @@ static int client_getattr(const char *path, struct stat *stbuf) {
 }
 
 static int client_open(const char *path, struct fuse_file_info *fi) {
-  printf("Open Called!\n");
-  if (strcmp(path, hello_path) != 0)
-    return -ENOENT;
-
-  if ((fi->flags & 3) != O_RDONLY)
-    return -EACCES;
-
+  string stringpath(path);
+  OpenResponse response = client.OpenFile(stringpath, fi->flags);
+  int res = response.res();
+  if (res == -1) return -errno;
   return 0;
 }
 
 static int client_read(const char *path, char *buf, size_t size, off_t offset,
 		    struct fuse_file_info *fi) {
-  	printf("read called!\n");
-	size_t len;
-	(void) fi;
-	if(strcmp(path, hello_path) != 0)
-		return -ENOENT;
+  (void) fi;
 
-	len = strlen(hello_str);
-	if (offset < len) {
-		if (offset + size > len)
-			size = len - offset;
-		memcpy(buf, hello_str + offset, size);
-	} else
-		size = 0;
-
-	return size;
-
+  string stringpath(path);
+  ReadResponse response = client.ReadFile(stringpath, size, offset);
+  int res = response.res();
+  // TODO: Do something with res here
+  string data = response.buf();
+  strcpy(buf, data.c_str());
+  return res;
 }
 
 static int client_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-			 off_t offset, struct fuse_file_info *fi)
-{
-  //client.SendString("readdir was called!");
+			 off_t offset, struct fuse_file_info *fi) {
   string stringPath(path);
   ReadDirReply reply = client.ReadDir(stringPath);
   (void) offset;
@@ -181,23 +221,34 @@ static int client_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   for (int i = 0; i < reply.inodenumber().size(); i++) {
     struct stat st;
     memset(&st, 0, sizeof(st));
-    //ofs << "inode: " << reply.inodenumber().Get(i) << endl;
-    //ofs << "type: " << reply.type().Get(i) << endl;
-    //ofs << "name: " << reply.name().Get(i) << endl;
     st.st_ino = reply.inodenumber().Get(i);
     st.st_mode = reply.type().Get(i) << 12;
     string name = reply.name().Get(i);
     if (filler(buf, name.c_str(), &st, 0)) break;
   }
 
-  //ofs.close();
+  return 0;
+}
 
-  //if (strcmp(path, "/") != 0)
-  //  return -ENOENT;
+static int client_mknod(const char *path, mode_t mode, dev_t rdev) {
+  string stringpath(path);
+  MkNodResponse response = client.MkNod(stringpath, mode, rdev);
 
-  //filler(buf, ".", NULL, 0);
-  //filler(buf, "..", NULL, 0);
-  //filler(buf, hello_path + 1, NULL, 0);
+  int res = response.res();
+  if (res == -1) return -errno;
+
+  return 0; 
+}
+
+
+static int client_mkdir(const char *path, mode_t mode) {
+  cout << "mkdir called!" << endl;
+  //string stringpath(path);
+  //MkDirResponse response = client.MkDir(stringpath, mode);
+
+  //int res = response.res();
+  //if (res == -1) return -errno;
+  client.SendString("mkdir called!");
 
   return 0;
 }
@@ -240,6 +291,6 @@ int main(int argc, char *argv[]) {
   //string message = client.SendString("Hello, World!\n");
   return fuse_main(argc, argv, &client_oper, NULL);
   //struct stat stbuf;
-  //client_getattr("/", &stbuf);
+  //client_mkdir("/testdir", 16893);
   //return 0;
 }

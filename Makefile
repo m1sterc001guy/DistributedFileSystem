@@ -26,7 +26,7 @@ server: afs.pb.o afs.grpc.pb.o server.o
 
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h client
+	rm -f *.o *.pb.cc *.pb.h client server
 
 # The following is to test your system and ensure a smoother experience.
 # They are by no means necessary to actually compile a grpc-enabled software.

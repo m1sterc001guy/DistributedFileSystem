@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+option java_package = "afs.grpc";
+
+package afsgrpc;
+
+service AfsService {
+  rpc SendString (StringMessage) returns (StringMessage) {}
+  rpc ReadDir (ReadDirMessage) returns (ReadDirReply) {}
+  rpc GetAttr (GetAttrRequest) returns (GetAttrResponse) {}
+}
+
+message StringMessage {
+  string stringmessage = 1;
+}
+
+message ReadDirMessage {
+  string path = 1;
+}
+
+message ReadDirReply {
+  repeated int64 inodenumber = 1;
+  repeated int32 type = 2;
+  repeated string name = 3;
+}
+
+message GetAttrRequest {
+  string path = 1;
+}
+
+message GetAttrResponse {
+  int64 dev = 1;
+  int64 ino = 2;
+  int32 mode = 3;
+  int64 nlink = 4;
+  int32 uid = 5;
+  int32 gid = 6;
+  int64 rdev = 7;
+  int64 size = 8;
+  int64 atime = 9;
+  int64 mtime = 10;
+  int64 ctime = 11;
+  int64 blksize = 12;
+  int64 blocks = 13;
+  int32 res = 14;
+}

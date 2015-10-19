@@ -34,6 +34,8 @@ using afsgrpc::ReadRequest;
 using afsgrpc::ReadResponse;
 using afsgrpc::OpenRequest;
 using afsgrpc::OpenResponse;
+using afsgrpc::WriteRequest;
+using afsgrpc::WriteResponse;
 
 using namespace std;
 
@@ -153,6 +155,24 @@ class AfsServiceImpl final : public AfsService::Service {
     res = open(path.c_str(), request->flags());
     response->set_res(res);
     close(res);
+    return Status::OK;
+  }
+
+  Status WriteFile(ServerContext *context, const WriteRequest *request,
+                   WriteResponse *response) override {
+    int fd;
+    int res;
+    string path = serverpath + request->path();
+    fd = open(path.c_str(), O_WRONLY);
+    if (fd == -1) return Status::CANCELLED;
+ 
+    string buf = request->buf();
+    size_t size = request->size();
+    off_t offset = request->offset();
+    res = pwrite(fd, buf.c_str(), size, offset);
+    close(fd);
+    
+    response->set_res(res);
     return Status::OK;
   }
 

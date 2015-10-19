@@ -40,11 +40,10 @@ using afsgrpc::ReadRequest;
 using afsgrpc::ReadResponse;
 using afsgrpc::OpenRequest;
 using afsgrpc::OpenResponse;
+using afsgrpc::WriteRequest;
+using afsgrpc::WriteResponse;
 
 using namespace std;
-
-static const char *hello_str = "Hello World!\n";
-static const char *hello_path = "/hello";
 
 class AfsClient {
   public:
@@ -157,6 +156,23 @@ class AfsClient {
       return response;
     }
 
+    WriteResponse WriteFile(const string &path, string &buf, size_t size, off_t offset) {
+      WriteRequest request;
+      request.set_path(path);
+      request.set_buf(buf);
+      request.set_size(size);
+      request.set_offset(offset);
+
+      WriteResponse response;
+      ClientContext context;
+      Status status = stub_->WriteFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
   private:
     unique_ptr<AfsService::Stub> stub_;
 
@@ -242,23 +258,34 @@ static int client_mknod(const char *path, mode_t mode, dev_t rdev) {
 
 
 static int client_mkdir(const char *path, mode_t mode) {
-  cout << "mkdir called!" << endl;
-  //string stringpath(path);
-  //MkDirResponse response = client.MkDir(stringpath, mode);
+  //cout << "mkdir called!" << endl;
+  string stringpath(path);
+  MkDirResponse response = client.MkDir(stringpath, mode);
 
-  //int res = response.res();
-  //if (res == -1) return -errno;
-  client.SendString("mkdir called!");
+  int res = response.res();
+  if (res == -1) return -errno;
+  //client.SendString("mkdir called!");
 
   return 0;
+}
+
+static int client_write(const char *path, const char *buf, size_t size,
+                        off_t offset, struct fuse_file_info *fi) {
+  (void) fi;
+  string stringpath(path);
+  string stringbuf(buf);
+  WriteResponse response = client.WriteFile(stringpath, stringbuf, size, offset);
+  int res = response.res();
+  if (res == -1) return -errno;
+  return res;
 }
 
 static struct fuse_operations client_oper = {
   getattr: client_getattr,
   readlink: NULL,
   getdir: NULL,
-  mknod: NULL,
-  mkdir: NULL,
+  mknod: client_mknod,
+  mkdir: client_mkdir,
   unlink: NULL,
   rmdir: NULL,
   symlink: NULL,
@@ -270,7 +297,7 @@ static struct fuse_operations client_oper = {
   utime: NULL,
   open: client_open,
   read: client_read,
-  write: NULL,
+  write: client_write,
   statfs: NULL,
   flush: NULL,
   release: NULL,

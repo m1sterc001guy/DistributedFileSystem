@@ -42,6 +42,8 @@ using afsgrpc::OpenRequest;
 using afsgrpc::OpenResponse;
 using afsgrpc::WriteRequest;
 using afsgrpc::WriteResponse;
+using afsgrpc::AccessRequest;
+using afsgrpc::AccessResponse;
 
 using namespace std;
 
@@ -173,6 +175,21 @@ class AfsClient {
       return response;
     }
 
+    AccessResponse AccessFile(const string &path, int mask) {
+      AccessRequest request;
+      request.set_path(path);
+      request.set_mask(mask);
+
+      AccessResponse response;
+      ClientContext context;
+      Status status = stub_->AccessFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
   private:
     unique_ptr<AfsService::Stub> stub_;
 
@@ -200,7 +217,7 @@ static int client_getattr(const char *path, struct stat *stbuf) {
   stbuf->st_blocks = response.blocks();
 
   int res = response.res();
-  if (res == -1) return -errno;
+  if (res == -1) return -ENOENT;
 
   return 0;
 }
@@ -280,6 +297,14 @@ static int client_write(const char *path, const char *buf, size_t size,
   return res;
 }
 
+static int client_access(const char *path, int mask) {
+  string stringpath(path);
+  AccessResponse response = client.AccessFile(stringpath, mask);
+  int res = response.res();
+  if (res == -1) return -errno;
+  return 0; 
+}
+
 static struct fuse_operations client_oper = {
   getattr: client_getattr,
   readlink: NULL,
@@ -312,6 +337,7 @@ static struct fuse_operations client_oper = {
   fsyncdir: NULL,
   init: NULL,
   destroy: NULL,
+  access: NULL,
 };
 
 int main(int argc, char *argv[]) { 

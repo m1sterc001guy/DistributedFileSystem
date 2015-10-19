@@ -11,9 +11,8 @@ service AfsService {
   rpc OpenFile (OpenRequest) returns (OpenResponse) {}
   rpc ReadFile (ReadRequest) returns (ReadResponse) {}
   rpc WriteFile (WriteRequest) returns (WriteResponse) {}
-
-  // not working yet. Need to get other syscalls working first?
   rpc MkDir (MkDirRequest) returns (MkDirResponse) {}
+  rpc AccessFile(AccessRequest) returns (AccessResponse) {}
   rpc MkNod (MkNodRequest) returns (MkNodResponse) {}
 }
 
@@ -99,5 +98,14 @@ message WriteRequest {
 }
 
 message WriteResponse {
+  int32 res = 1;
+}
+
+message AccessRequest {
+  string path = 1;
+  int32 mask = 2;
+}
+
+message AccessResponse {
   int32 res = 1;
 }

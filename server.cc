@@ -36,6 +36,8 @@ using afsgrpc::OpenRequest;
 using afsgrpc::OpenResponse;
 using afsgrpc::WriteRequest;
 using afsgrpc::WriteResponse;
+using afsgrpc::AccessRequest;
+using afsgrpc::AccessResponse;
 
 using namespace std;
 
@@ -107,6 +109,7 @@ class AfsServiceImpl final : public AfsService::Service {
   Status MkNod(ServerContext *context, const MkNodRequest *request,
                MkNodResponse *response) override {
     string path = serverpath + request->path();
+    cout << "MKNOD PATH: " << path << endl;
     int res;
     mode_t mode = request->mode();
     dev_t rdev = request->rdev();
@@ -172,6 +175,16 @@ class AfsServiceImpl final : public AfsService::Service {
     res = pwrite(fd, buf.c_str(), size, offset);
     close(fd);
     
+    response->set_res(res);
+    return Status::OK;
+  }
+
+  Status AccessFile(ServerContext *context, const AccessRequest *request,
+                    AccessResponse *response) override {
+    int res;
+    string path = serverpath + request->path();
+    int mask = request->mask();
+    res = access(path.c_str(), mask);
     response->set_res(res);
     return Status::OK;
   }

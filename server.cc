@@ -1,14 +1,15 @@
-#include <iostream>
-#include <memory>
-#include <string>
-#include <stdint.h>
-#include <sys/stat.h>
+#include <algorithm>
 #include <dirent.h>
 #include <errno.h>
-#include <algorithm>
-#include <sys/types.h>
 #include <fcntl.h>
+#include <iostream>
+#include <memory>
+#include <stdint.h>
+#include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include <grpc++/grpc++.h>
 
@@ -40,6 +41,10 @@ using afsgrpc::WriteRequest;
 using afsgrpc::WriteResponse;
 using afsgrpc::AccessRequest;
 using afsgrpc::AccessResponse;
+using afsgrpc::UTimeRequest;
+using afsgrpc::UTimeResponse;
+using afsgrpc::UnlinkRequest;
+using afsgrpc::UnlinkResponse;
 
 using namespace std;
 
@@ -204,6 +209,26 @@ class AfsServiceImpl final : public AfsService::Service {
     int mask = request->mask();
     res = access(path.c_str(), mask);
     response->set_res(res);
+    return Status::OK;
+  }
+
+  Status UTime(ServerContext *context, const UTimeRequest *request,
+               UTimeResponse *response) override {
+    string path = serverpath + request->path();
+    cout << "UTIME PATH: " << path << endl;
+    int res = utime(path.c_str(), NULL);
+    response->set_res(res);
+    cout << "UTIME RES: " << res << endl;
+    return Status::OK;
+  }
+
+  Status Unlink(ServerContext *context, const UnlinkRequest *request,
+               UnlinkResponse *response) override {
+    string path = serverpath + request->path();
+    cout << "UNLINK PATH: " << path << endl;
+    int res = unlink(path.c_str());
+    response->set_res(res);
+    cout << "UNLINK RES: " << res << endl;
     return Status::OK;
   }
 

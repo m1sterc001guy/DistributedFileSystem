@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <dirent.h>
 
 #include <iostream>
@@ -46,6 +47,10 @@ using afsgrpc::WriteRequest;
 using afsgrpc::WriteResponse;
 using afsgrpc::AccessRequest;
 using afsgrpc::AccessResponse;
+using afsgrpc::UTimeRequest;
+using afsgrpc::UTimeResponse;
+using afsgrpc::UnlinkRequest;
+using afsgrpc::UnlinkResponse;
 
 using namespace std;
 
@@ -207,6 +212,34 @@ class AfsClient {
       return response;
     }
 
+    UTimeResponse UTime(const string &path) {
+      UTimeRequest request;
+      request.set_path(path);
+
+      UTimeResponse response;
+      ClientContext context;
+      Status status = stub_->UTime(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
+    UnlinkResponse Unlink(const string &path) {
+      UnlinkRequest request;
+      request.set_path(path);
+
+      UnlinkResponse response;
+      ClientContext context;
+      Status status = stub_->Unlink(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
   private:
     unique_ptr<AfsService::Stub> stub_;
 
@@ -290,16 +323,13 @@ static int client_mknod(const char *path, mode_t mode, dev_t rdev) {
   return 0; 
 }
 
-
 static int client_mkdir(const char *path, mode_t mode) {
-  //cout << "mkdir called!" << endl;
   string stringpath(path);
   MkDirResponse response = client.MkDir(stringpath, mode);
 
   int res = response.res();
   if (res == -1) return -errno;
-  //client.SendString("mkdir called!");
-
+  
   return 0;
 }
 
@@ -332,6 +362,26 @@ static int client_access(const char *path, int mask) {
   return 0; 
 }
 
+static int client_utime(const char *path, utimbuf *time) {
+  string stringpath(path);
+  UTimeResponse response = client.UTime(stringpath);
+
+  int res = response.res();
+  if (res == -1) return -errno;
+ 
+  return 0;
+}
+
+static int client_unlink(const char *path) {
+  string stringpath(path);
+  UnlinkResponse response = client.Unlink(stringpath);
+
+  int res = response.res();
+  if (res == -1) return -errno;
+ 
+  return 0;
+}
+
 // All these attributes must appear here in this exact order!
 static struct fuse_operations client_oper = {
   getattr: client_getattr,
@@ -339,7 +389,7 @@ static struct fuse_operations client_oper = {
   getdir: NULL,
   mknod: client_mknod,
   mkdir: client_mkdir,
-  unlink: NULL,
+  unlink: client_unlink,
   rmdir: client_rmdir,
   symlink: NULL,
   rename: NULL,
@@ -347,7 +397,7 @@ static struct fuse_operations client_oper = {
   chmod: NULL,
   chown: NULL,
   truncate: NULL,
-  utime: NULL,
+  utime: client_utime,
   open: client_open,
   read: client_read,
   write: client_write,
@@ -373,5 +423,6 @@ int main(int argc, char *argv[]) {
   return fuse_main(argc, argv, &client_oper, NULL);
   //struct stat stbuf;
   //client_mkdir("/testdir", 16893);
+  //client_utime("/testing.txt", NULL);
   //return 0;
 }

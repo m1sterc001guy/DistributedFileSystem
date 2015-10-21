@@ -15,6 +15,8 @@ service AfsService {
   rpc RmDir (RmDirRequest) returns (RmDirResponse) {}
   rpc AccessFile(AccessRequest) returns (AccessResponse) {}
   rpc MkNod (MkNodRequest) returns (MkNodResponse) {}
+  rpc UTime (UTimeRequest) returns (UTimeResponse) {}
+  rpc Unlink (UnlinkRequest) returns (UnlinkResponse) {}
 }
 
 // Different fields must use different numbers, cannot reuse numbers
@@ -120,5 +122,22 @@ message AccessRequest {
 }
 
 message AccessResponse {
+  int32 res = 1;
+}
+
+message UTimeRequest {
+  string path = 1;
+  
+}
+
+message UTimeResponse {
+  int32 res = 1;
+}
+
+message UnlinkRequest {
+  string path = 1;  
+}
+
+message UnlinkResponse {
   int32 res = 1;
 }

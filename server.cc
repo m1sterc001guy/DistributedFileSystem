@@ -245,7 +245,7 @@ class AfsServiceImpl final : public AfsService::Service {
 void RunServer() {
   string server_address("0.0.0.0:50051");
   // This is where the files live on the server.
-  AfsServiceImpl service("/home/mark/Dropbox/UW/CS739/cs739p2/serverDir");
+  AfsServiceImpl service("./serverDir");
 
   ServerBuilder builder;
 

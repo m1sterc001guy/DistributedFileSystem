@@ -117,6 +117,7 @@ class AfsServiceImpl final : public AfsService::Service {
     string path = serverpath + request->path();
     int res = mkdir(path.c_str(), request->mode());
     response->set_res(res);
+    cout << "MKDIR: " << path << endl;
     return Status::OK;
   }
 
@@ -125,10 +126,10 @@ class AfsServiceImpl final : public AfsService::Service {
     string path = serverpath + request->path();
     int res = rmdir(path.c_str());
     response->set_res(res);
+    cout << "RMDIR: " << path << endl;
     return Status::OK;
   }
 
-  // not working yet
   Status MkNod(ServerContext *context, const MkNodRequest *request,
                MkNodResponse *response) override {
     string path = serverpath + request->path();
@@ -146,9 +147,11 @@ class AfsServiceImpl final : public AfsService::Service {
     }
 
     response->set_res(res);
+    cout << "MKNOD: " << path << endl;
     return Status::OK;
   }
 
+  // shouldnt be called anymore
   Status ReadFile(ServerContext *context, const ReadRequest *request,
                   ReadResponse *response) override {
     int fd;
@@ -201,6 +204,7 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  // shouldnt be called anymore
   Status OpenFile(ServerContext *context, const OpenRequest *request,
                   OpenResponse *response) override {
     int res;
@@ -211,6 +215,7 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  // shouldnt be called anymore
   Status WriteFile(ServerContext *context, const WriteRequest *request,
                    WriteResponse *response) override {
     int fd;
@@ -247,6 +252,7 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  // not being called
   Status AccessFile(ServerContext *context, const AccessRequest *request,
                     AccessResponse *response) override {
     int res;
@@ -262,6 +268,7 @@ class AfsServiceImpl final : public AfsService::Service {
     string path = serverpath + request->path();
     int res = utime(path.c_str(), NULL);
     response->set_res(res);
+    cout << "UTIME: " << path << endl;
     return Status::OK;
   }
 
@@ -270,6 +277,7 @@ class AfsServiceImpl final : public AfsService::Service {
     string path = serverpath + request->path();
     int res = unlink(path.c_str());
     response->set_res(res);
+    cout << "UNLINK: " << path << endl;
     return Status::OK;
   }
 

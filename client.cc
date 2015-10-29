@@ -323,10 +323,8 @@ static int write_new_file(int fd, string &buf, size_t size) {
   return res;
 }
 
-
-static int client_release(const char *path, struct fuse_file_info *fi) {
+static int client_fsync(const char *path, int isdatasync, struct fuse_file_info *fi) {
   string stringpath(path);
-  client.SendString("File: " + stringpath + " Released called!");
   string clientPath = clientCacheDirectory + stringpath;
 
   struct stat st;
@@ -335,7 +333,44 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   GetAttrResponse attrResponse = client.GetAttr(stringpath);
   int res = attrResponse.res();
   if (res == -1) return -errno;
-  if (attrResponse.mtime() < st.st_mtime) {
+  //if (attrResponse.mtime() < st.st_mtime) {
+  //client.SendString("FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
+  client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
+  if (true) {
+    int fd = open_local_file(clientPath, O_RDONLY);
+    if (fd == -1) return -errno;
+  
+    char buf[size];
+    res = pread(fd, &buf, size, 0); 
+    if (res == -1) return -errno;
+    close(fd);
+
+    string data = string(buf);
+    client.SendString("File: " + stringpath + " Updating file on server.");
+    WriteFileResponse response = client.WriteWholeFile(stringpath, data, size);
+    res = response.res();
+    if (res == -1) return -errno;
+  } else {
+    client.SendString("File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
+  }
+  return 0;
+}
+
+
+static int client_release(const char *path, struct fuse_file_info *fi) {
+  string stringpath(path);
+  string clientPath = clientCacheDirectory + stringpath;
+
+  struct stat st;
+  if (stat(clientPath.c_str(), &st) == -1) return -errno;
+  size_t size = st.st_size;
+  GetAttrResponse attrResponse = client.GetAttr(stringpath);
+  int res = attrResponse.res();
+  if (res == -1) return -errno;
+  //if (attrResponse.mtime() < st.st_mtime) {
+  //client.SendString("FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
+  client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
+  if (true) {
     int fd = open_local_file(clientPath, O_RDONLY);
     if (fd == -1) return -errno;
   
@@ -556,8 +591,8 @@ static struct fuse_operations client_oper = {
   write: client_write,
   statfs: NULL,
   flush: NULL,
-  release: client_release,
-  fsync: NULL,
+  release: NULL,
+  fsync: client_fsync,
   setxattr: NULL,
   getxattr: NULL,
   listxattr: NULL,

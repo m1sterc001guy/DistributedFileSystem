@@ -45,6 +45,10 @@ using afsgrpc::UTimeRequest;
 using afsgrpc::UTimeResponse;
 using afsgrpc::UnlinkRequest;
 using afsgrpc::UnlinkResponse;
+using afsgrpc::GetFileRequest;
+using afsgrpc::GetFileResponse;
+using afsgrpc::WriteFileRequest;
+using afsgrpc::WriteFileResponse;
 
 using namespace std;
 
@@ -111,20 +115,16 @@ class AfsServiceImpl final : public AfsService::Service {
   Status MkDir(ServerContext *context, const MkDirRequest *request,
                MkDirResponse *response) override {
     string path = serverpath + request->path();
-    cout << "MKDIR PATH: " << path << endl;
     int res = mkdir(path.c_str(), request->mode());
     response->set_res(res);
-    cout << "MKDIR RES: " << res << endl;
     return Status::OK;
   }
 
   Status RmDir(ServerContext *context, const RmDirRequest *request,
                RmDirResponse *response) override {
     string path = serverpath + request->path();
-    cout << "RMDIR PATH: " << path << endl;
     int res = rmdir(path.c_str());
     response->set_res(res);
-    cout << "RMDIR RES: " << res << endl;
     return Status::OK;
   }
 
@@ -132,7 +132,6 @@ class AfsServiceImpl final : public AfsService::Service {
   Status MkNod(ServerContext *context, const MkNodRequest *request,
                MkNodResponse *response) override {
     string path = serverpath + request->path();
-    cout << "MKNOD PATH: " << path << endl;
     int res;
     mode_t mode = request->mode();
     dev_t rdev = request->rdev();
@@ -174,6 +173,34 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  Status GetFile(ServerContext *context, const GetFileRequest *request,
+                 GetFileResponse *response) override {
+    int fd;
+    int res;
+
+    string path = serverpath + request->path();
+    fd = open(path.c_str(), O_RDONLY);
+    if (fd == -1) return Status::CANCELLED;
+
+    // get the size of the file
+    struct stat st;
+    stat(path.c_str(), &st);
+    size_t size = st.st_size;
+
+    char buf[size];
+    // read the entire file
+    res = pread(fd, &buf, size, 0); 
+    if (res == -1) return Status::CANCELLED;
+    close(fd);
+
+    string returnBuf(buf);
+    response->set_buf(returnBuf);
+    response->set_res(res);
+    response->set_size(size);
+
+    return Status::OK;
+  }
+
   Status OpenFile(ServerContext *context, const OpenRequest *request,
                   OpenResponse *response) override {
     int res;
@@ -202,6 +229,24 @@ class AfsServiceImpl final : public AfsService::Service {
     return Status::OK;
   }
 
+  Status WriteWholeFile(ServerContext *context, const WriteFileRequest *request,
+                        WriteFileResponse *response) override {
+    int fd;
+    int res;
+    string path = serverpath + request->path();
+    cout << "File: " + path + " Writing the WHOLE file back to the server. Data: " << request->buf() << endl;
+    fd = open(path.c_str(), O_CREAT | O_RDWR | O_TRUNC);
+    if (fd == -1) return Status::CANCELLED;
+
+    string buf = request->buf();
+    size_t size = request->size();
+    res = pwrite(fd, buf.c_str(), size, 0);
+    close(fd);
+
+    response->set_res(res);
+    return Status::OK;
+  }
+
   Status AccessFile(ServerContext *context, const AccessRequest *request,
                     AccessResponse *response) override {
     int res;
@@ -215,20 +260,16 @@ class AfsServiceImpl final : public AfsService::Service {
   Status UTime(ServerContext *context, const UTimeRequest *request,
                UTimeResponse *response) override {
     string path = serverpath + request->path();
-    cout << "UTIME PATH: " << path << endl;
     int res = utime(path.c_str(), NULL);
     response->set_res(res);
-    cout << "UTIME RES: " << res << endl;
     return Status::OK;
   }
 
   Status Unlink(ServerContext *context, const UnlinkRequest *request,
                UnlinkResponse *response) override {
     string path = serverpath + request->path();
-    cout << "UNLINK PATH: " << path << endl;
     int res = unlink(path.c_str());
     response->set_res(res);
-    cout << "UNLINK RES: " << res << endl;
     return Status::OK;
   }
 
@@ -242,10 +283,10 @@ class AfsServiceImpl final : public AfsService::Service {
   
 };
 
-void RunServer() {
+void RunServer(string &directory) {
   string server_address("0.0.0.0:50051");
   // This is where the files live on the server.
-  AfsServiceImpl service("./serverDir");
+  AfsServiceImpl service(directory);
 
   ServerBuilder builder;
 
@@ -259,7 +300,13 @@ void RunServer() {
 }
 
 int main(int argc, char** argv) {
+  if (argc < 2 || argc > 2) {
+    cout << "Invalid number of arguments. Quitting..." << endl;
+    exit(0);
+  }
+  string directory(argv[1]);
+  cout << "Directory: " << directory << endl;
   cout << "Server Running..." << endl;
-  RunServer();
+  RunServer(directory);
   return 0;
 }

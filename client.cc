@@ -51,6 +51,10 @@ using afsgrpc::UTimeRequest;
 using afsgrpc::UTimeResponse;
 using afsgrpc::UnlinkRequest;
 using afsgrpc::UnlinkResponse;
+using afsgrpc::GetFileRequest;
+using afsgrpc::GetFileResponse;
+using afsgrpc::WriteFileRequest;
+using afsgrpc::WriteFileResponse;
 
 using namespace std;
 
@@ -165,6 +169,36 @@ class AfsClient {
       return response;
     }
 
+    GetFileResponse GetFile(const string &path) {
+      GetFileRequest request;
+      request.set_path(path);
+
+      GetFileResponse response;
+      ClientContext context;
+      Status status = stub_->GetFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do Something on failure here
+      return response;
+    }
+
+    WriteFileResponse WriteWholeFile(const string &path, string &buf, size_t size) {
+      WriteFileRequest request;
+      request.set_path(path);
+      request.set_buf(buf);
+      request.set_size(size);
+ 
+      WriteFileResponse response;
+      ClientContext context;
+      Status status = stub_->WriteWholeFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    }
+
     OpenResponse OpenFile(const string &path, int flags) {
       OpenRequest request;
       request.set_path(path);
@@ -247,6 +281,7 @@ class AfsClient {
 
 
 static AfsClient client(grpc::CreateChannel("localhost:50051", grpc::InsecureCredentials()));
+static string clientCacheDirectory;
 
 static int client_getattr(const char *path, struct stat *stbuf) {
   string stringpath(path);
@@ -272,24 +307,124 @@ static int client_getattr(const char *path, struct stat *stbuf) {
   return 0;
 }
 
-static int client_open(const char *path, struct fuse_file_info *fi) {
+static int open_local_file(string &clientPath, int flags) {
+  int fd;
+  fd = open(clientPath.c_str(), flags, 0666); 
+  return fd;
+}
+
+static int read_whole_file(int fd, char *buf, size_t size) {
+  int res = pread(fd, buf, size, 0);
+  return res;
+}
+
+static int write_new_file(int fd, string &buf, size_t size) {
+  int res = pwrite(fd, buf.c_str(), size, 0);
+  return res;
+}
+
+
+static int client_release(const char *path, struct fuse_file_info *fi) {
   string stringpath(path);
-  OpenResponse response = client.OpenFile(stringpath, fi->flags);
-  int res = response.res();
+  client.SendString("File: " + stringpath + " Released called!");
+  string clientPath = clientCacheDirectory + stringpath;
+
+  struct stat st;
+  if (stat(clientPath.c_str(), &st) == -1) return -errno;
+  size_t size = st.st_size;
+  GetAttrResponse attrResponse = client.GetAttr(stringpath);
+  int res = attrResponse.res();
   if (res == -1) return -errno;
+  if (attrResponse.mtime() < st.st_mtime) {
+    int fd = open_local_file(clientPath, O_RDONLY);
+    if (fd == -1) return -errno;
+  
+    char buf[size];
+    res = pread(fd, &buf, size, 0); 
+    if (res == -1) return -errno;
+    close(fd);
+
+    string data = string(buf);
+    client.SendString("File: " + stringpath + " Updating file on server.");
+    WriteFileResponse response = client.WriteWholeFile(stringpath, data, size);
+    res = response.res();
+    if (res == -1) return -errno;
+  } else {
+    client.SendString("File: " + stringpath + " Released called, but the timestamp says not to update the file.");
+  }
   return 0;
+}
+
+static int client_open(const char *path, struct fuse_file_info *fi) {
+  string stringpath = string(path);
+  string clientPath = clientCacheDirectory + string(path);
+  // test if the file is cached
+  ifstream infile(clientPath);
+  if (infile.good()) {
+    // the file is cached
+    struct stat statbuf;
+    if (stat(clientPath.c_str(), &statbuf) == -1) return -errno;
+    GetAttrResponse attrResponse = client.GetAttr(stringpath);
+    if (attrResponse.res() == -1) return -errno;
+    if (attrResponse.mtime() > statbuf.st_mtime) {
+      // need to get server copy
+      client.SendString("File: " + string(path) + " UPDATED. Getting new copy.");
+      GetFileResponse response = client.GetFile(string(path));
+      int res = response.res();
+      if (res == -1) return -errno;
+      
+      int fd = open_local_file(clientPath, O_CREAT | O_RDWR | O_TRUNC);
+      if (fd == -1) return -errno;
+
+      string buf = response.buf();
+      size_t size = response.size();
+      int clientRes = write_new_file(fd, buf, size);
+      if (clientRes == -1) return -errno;
+      close(fd);
+      return 0;
+    } else {
+      // safe to use cached copy
+      int fd = open_local_file(clientPath, O_RDWR);
+      if (fd == -1) return -errno;
+      close(fd);
+      client.SendString("File: " + string(path) + " Using cached copy! PATH: " + clientPath);
+      return 0;
+    }
+  } else {
+    // get file from server
+    GetFileResponse response = client.GetFile(string(path));
+    int res = response.res();
+    if (res == -1) return -errno; 
+
+    // open local copy and write to it
+    int fd = open_local_file(clientPath, O_CREAT | O_RDWR | O_TRUNC);
+    if (fd == -1) return -errno;
+    //write new data
+    string buf = response.buf();
+    size_t size = response.size();
+    int clientRes = write_new_file(fd, buf, size);
+    if (clientRes == -1) clientRes = -errno;
+    close(fd);
+    client.SendString("File: " + string(path) + " FIRST. Getting file from server");
+    return 0;
+  }
+
+  return -1;
 }
 
 static int client_read(const char *path, char *buf, size_t size, off_t offset,
 		    struct fuse_file_info *fi) {
-  (void) fi;
+  int fd;
+  int res;
 
-  string stringpath(path);
-  ReadResponse response = client.ReadFile(stringpath, size, offset);
-  int res = response.res();
-  // TODO: Do something with res here
-  string data = response.buf();
-  strcpy(buf, data.c_str());
+  (void) fi;
+  string clientPath = clientCacheDirectory + string(path);
+  fd = open(clientPath.c_str(), O_RDONLY);
+  if (fd == -1) return -errno;
+
+  res = pread(fd, buf, size, offset);
+  if (res == -1) res = -errno;
+  close(fd);
   return res;
 }
 
@@ -345,12 +480,18 @@ static int client_rmdir(const char *path) {
 
 static int client_write(const char *path, const char *buf, size_t size,
                         off_t offset, struct fuse_file_info *fi) {
+  int fd;
+  int res;
+
   (void) fi;
-  string stringpath(path);
-  string stringbuf(buf);
-  WriteResponse response = client.WriteFile(stringpath, stringbuf, size, offset);
-  int res = response.res();
-  if (res == -1) return -errno;
+  string clientPath = clientCacheDirectory + string(path);
+  fd = open(clientPath.c_str(), O_WRONLY);
+  if (fd == -1) return -errno;
+
+  res = pwrite(fd, buf, size, offset);
+  if (res == -1) res = -errno;
+  close(fd);
+
   return res;
 }
 
@@ -365,22 +506,34 @@ static int client_access(const char *path, int mask) {
 static int client_utime(const char *path, utimbuf *time) {
   string stringpath(path);
   UTimeResponse response = client.UTime(stringpath);
-
+  
   int res = response.res();
   if (res == -1) return -errno;
- 
+
+  // also utime on the client
+  string clientPath = clientPath + stringpath;
+  res = utime(clientPath.c_str(), NULL);
+  if (res == -1) return -errno;
+
   return 0;
 }
 
 static int client_unlink(const char *path) {
   string stringpath(path);
   UnlinkResponse response = client.Unlink(stringpath);
-
+  
   int res = response.res();
   if (res == -1) return -errno;
- 
+
+  // also unlink it on the client
+  string clientPath = clientCacheDirectory + stringpath;
+  res = unlink(clientPath.c_str());
+  if (res == -1) return -errno;
+
   return 0;
 }
+
+
 
 // All these attributes must appear here in this exact order!
 static struct fuse_operations client_oper = {
@@ -403,7 +556,7 @@ static struct fuse_operations client_oper = {
   write: client_write,
   statfs: NULL,
   flush: NULL,
-  release: NULL,
+  release: client_release,
   fsync: NULL,
   setxattr: NULL,
   getxattr: NULL,
@@ -419,10 +572,13 @@ static struct fuse_operations client_oper = {
 };
 
 int main(int argc, char *argv[]) { 
-  //string message = client.SendString("Hello, World!\n");
+  if (argc < 2 || argc > 2) {
+    cout << "Invalid number of arguments. Quitting..." << endl;
+    exit(0);
+  }
+
+  clientCacheDirectory = "/home/justin/cs739/p2/afs/clientDir";
+
   return fuse_main(argc, argv, &client_oper, NULL);
-  //struct stat stbuf;
-  //client_mkdir("/testdir", 16893);
-  //client_utime("/testing.txt", NULL);
   //return 0;
 }

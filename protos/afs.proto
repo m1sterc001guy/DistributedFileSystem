@@ -17,6 +17,8 @@ service AfsService {
   rpc MkNod (MkNodRequest) returns (MkNodResponse) {}
   rpc UTime (UTimeRequest) returns (UTimeResponse) {}
   rpc Unlink (UnlinkRequest) returns (UnlinkResponse) {}
+  rpc GetFile (GetFileRequest) returns (GetFileResponse) {}
+  rpc WriteWholeFile (WriteFileRequest) returns (WriteFileResponse) {}
 }
 
 // Different fields must use different numbers, cannot reuse numbers
@@ -24,7 +26,7 @@ service AfsService {
 // Can only have primitive types in these messages (can't send the stat struct)
 
 message StringMessage {
-  string stringmessage = 1;
+  bytes stringmessage = 1;
 }
 
 message ReadDirMessage {
@@ -94,6 +96,26 @@ message ReadRequest {
 message ReadResponse {
   string buf = 1;
   int32 res = 2;
+}
+
+message GetFileRequest {
+  string path = 1;
+}
+
+message GetFileResponse {
+  bytes buf = 1;
+  int32 res = 2;
+  int64 size = 3;
+}
+
+message WriteFileRequest {
+  bytes buf = 1;
+  int64 size = 2;
+  string path = 3;
+}
+
+message WriteFileResponse {
+  int32 res = 1;
 }
 
 message OpenRequest {

@@ -607,13 +607,23 @@ static struct fuse_operations client_oper = {
 };
 
 int main(int argc, char *argv[]) { 
-  if (argc < 2 || argc > 2) {
+  if (argc < 3 || argc > 3) {
     cout << "Invalid number of arguments. Quitting..." << endl;
+    cout << "Third argument must be an absolute path." << endl;
     exit(0);
   }
 
-  clientCacheDirectory = "/home/justin/cs739/p2/afs/clientDir";
+  char *args[argc];
+  for (int i = 0; i < argc - 1; i++) {
+    int length = strlen(argv[i]);
+    args[i] = new char[length + 1];
+    strncpy(args[i], argv[i], length);
+    args[i][length] = '\0';
+  }
 
-  return fuse_main(argc, argv, &client_oper, NULL);
+  //clientCacheDirectory = "/home/justin/cs739/p2/afs/clientDir";
+  clientCacheDirectory = argv[argc - 1];
+
+  return fuse_main(argc - 1, args, &client_oper, NULL);
   //return 0;
 }

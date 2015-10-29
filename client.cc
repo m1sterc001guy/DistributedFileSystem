@@ -354,7 +354,7 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   client.SendString("LOCAL FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
   client.SendString("SERVER FILE: " + stringpath + " atime: " + to_string(attrResponse.atime()) + " mtime: " + to_string(attrResponse.mtime()) + " ctime: " + to_string(attrResponse.ctime()));
   //client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
-  if (true) {
+  if (st.st_mtime > st.st_atime) {
     int fd = open_local_file(clientPath, O_RDONLY);
     if (fd == -1) return -errno;
   

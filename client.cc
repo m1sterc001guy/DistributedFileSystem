@@ -337,7 +337,7 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   client.SendString("LOCAL FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
   client.SendString("SERVER FILE: " + stringpath + " atime: " + to_string(attrResponse.atime()) + " mtime: " + to_string(attrResponse.mtime()) + " ctime: " + to_string(attrResponse.ctime()));
   //client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
-  if (st.st_mtime > attrResponse.atime()) {
+  if (true) {
     int fd = open_local_file(clientPath, O_RDONLY);
     if (fd == -1) return -errno;
   
@@ -537,6 +537,13 @@ static int client_unlink(const char *path) {
   return 0;
 }
 
+static int client_truncate(const char *path, off_t size) {
+  int res;
+  string clientPath = clientCacheDirectory + string(path);
+  res = truncate(clientPath.c_str(), size);
+  if (res == -1) return -errno;
+  return 0;
+}
 
 
 // All these attributes must appear here in this exact order!
@@ -553,7 +560,7 @@ static struct fuse_operations client_oper = {
   link: NULL,
   chmod: NULL,
   chown: NULL,
-  truncate: NULL,
+  truncate: client_truncate,
   utime: client_utime,
   open: client_open,
   read: client_read,

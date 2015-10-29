@@ -55,6 +55,8 @@ using afsgrpc::GetFileRequest;
 using afsgrpc::GetFileResponse;
 using afsgrpc::WriteFileRequest;
 using afsgrpc::WriteFileResponse;
+using afsgrpc::RenameRequest;
+using afsgrpc::RenameResponse;
 
 using namespace std;
 
@@ -273,6 +275,21 @@ class AfsClient {
       // TODO: Do something on failure here
       return response;
     }
+
+    RenameResponse Rename(const string &from, const string &to) {
+      RenameRequest request;
+      request.set_toname(to);
+      request.set_fromname(from);
+
+      RenameResponse response;
+      ClientContext context;
+      Status status = stub_->RenameFile(&context, request, &response);
+      if (status.ok()) {
+        return response;
+      }
+      // TODO: Do something on failure here
+      return response;
+    } 
 
   private:
     unique_ptr<AfsService::Stub> stub_;
@@ -545,6 +562,16 @@ static int client_truncate(const char *path, off_t size) {
   return 0;
 }
 
+static int client_rename(const char *from, const char *to) {
+  string frompath(from);
+  string topath(to);
+  RenameResponse response = client.Rename(frompath, topath);
+  int res = response.res();
+  if (res == -1) return -errno;
+
+  return 0; 
+}
+
 
 // All these attributes must appear here in this exact order!
 static struct fuse_operations client_oper = {
@@ -556,7 +583,7 @@ static struct fuse_operations client_oper = {
   unlink: client_unlink,
   rmdir: client_rmdir,
   symlink: NULL,
-  rename: NULL,
+  rename: client_rename,
   link: NULL,
   chmod: NULL,
   chown: NULL,

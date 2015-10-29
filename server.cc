@@ -49,6 +49,8 @@ using afsgrpc::GetFileRequest;
 using afsgrpc::GetFileResponse;
 using afsgrpc::WriteFileRequest;
 using afsgrpc::WriteFileResponse;
+using afsgrpc::RenameRequest;
+using afsgrpc::RenameResponse;
 
 using namespace std;
 
@@ -278,6 +280,16 @@ class AfsServiceImpl final : public AfsService::Service {
     int res = unlink(path.c_str());
     response->set_res(res);
     cout << "UNLINK: " << path << endl;
+    return Status::OK;
+  }
+
+  Status RenameFile(ServerContext *context, const RenameRequest *request,
+                    RenameResponse *response) override {
+    string toString = serverpath + request->toname();
+    string fromString = serverpath + request->fromname();
+    int res = rename(fromString.c_str(), toString.c_str());
+    response->set_res(res);
+    cout << "RENAME: " << fromString << endl;
     return Status::OK;
   }
 

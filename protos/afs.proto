@@ -19,6 +19,7 @@ service AfsService {
   rpc Unlink (UnlinkRequest) returns (UnlinkResponse) {}
   rpc GetFile (GetFileRequest) returns (GetFileResponse) {}
   rpc WriteWholeFile (WriteFileRequest) returns (WriteFileResponse) {}
+  rpc RenameFile (RenameRequest) returns (RenameResponse) {}
 }
 
 // Different fields must use different numbers, cannot reuse numbers
@@ -161,5 +162,14 @@ message UnlinkRequest {
 }
 
 message UnlinkResponse {
+  int32 res = 1;
+}
+
+message RenameRequest {
+  string toName = 1;
+  string fromName = 2;
+}
+
+message RenameResponse {
   int32 res = 1;
 }

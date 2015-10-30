@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <utime.h>
+#include <signal.h>
 
 #include <grpc++/grpc++.h>
 
@@ -243,6 +244,12 @@ class AfsServiceImpl final : public AfsService::Service {
     string path = serverpath + request->path();
     cout << "File: " + path + " Writing the WHOLE file back to the server. Data: " << request->buf() << endl;
     fd = open(path.c_str(), O_CREAT | O_RDWR | O_TRUNC);
+    // DANGER! If the server crashes here the file will be lost
+    // also do similar thing as the client. First write to a temporary file, 
+    // then atomically rename it to the correct name.
+    // return failre if the write is not successful so that the client knows
+    // not to update the cache
+    //kill(getpid(), SIGKILL);
     if (fd == -1) return Status::CANCELLED;
 
     string buf = request->buf();

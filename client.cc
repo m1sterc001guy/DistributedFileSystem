@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <algorithm>
+#include <signal.h>
 
 #include <fstream>
 
@@ -500,6 +501,9 @@ static int client_rmdir(const char *path) {
 
 static int client_write(const char *path, const char *buf, size_t size,
                         off_t offset, struct fuse_file_info *fi) {
+  // TODO: Write all data to an intermediate file
+  // when the file is released, and the data has successfully been written
+  // back to the server, atomically rename it to the correct name
   int fd;
   int res;
 
@@ -511,8 +515,8 @@ static int client_write(const char *path, const char *buf, size_t size,
   res = pwrite(fd, buf, size, offset);
   if (res == -1) res = -errno;
   close(fd);
-  //client.SendString("Waiting 10 seconds...");
-  //sleep(10);
+  //client.SendString("Pid: " + to_string(getpid()));
+  //kill(getpid(), SIGKILL);
   return res;
 }
 

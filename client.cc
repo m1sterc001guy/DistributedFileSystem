@@ -61,6 +61,8 @@ using afsgrpc::RenameResponse;
 
 using namespace std;
 
+static int file_copy(string sourcePath, string destPath);
+
 // Defines a stub which you call into to call server functions
 class AfsClient {
   public:
@@ -300,6 +302,7 @@ class AfsClient {
 
 static AfsClient client(grpc::CreateChannel("localhost:50051", grpc::InsecureCredentials()));
 static string clientCacheDirectory;
+static string clientTmpDirectory;
 
 static int client_getattr(const char *path, struct stat *stbuf) {
   string stringpath(path);
@@ -505,17 +508,28 @@ static int client_write(const char *path, const char *buf, size_t size,
   // when the file is released, and the data has successfully been written
   // back to the server, atomically rename it to the correct name
   int fd;
+  int file_size;
   int res;
+  int tmp_fd;
+  
+  string clientCachePath = clientCacheDirectory + string(path);
+  string clientTmpPath = clientTmpDirectory + string(path);
 
   (void) fi;
-  string clientPath = clientCacheDirectory + string(path);
-  fd = open(clientPath.c_str(), O_WRONLY);
-  if (fd == -1) return -errno;
 
-  res = pwrite(fd, buf, size, offset);
+  // First, copy the cached source file into the tmp directory
+  file_copy(clientCachePath, clientTmpPath);
+  
+  // Write to the tmp file
+  tmp_fd = open(clientTmpPath.c_str(), O_CREAT | O_WRONLY);  
+  if (tmp_fd == -1) return -errno;
+  res = pwrite(tmp_fd, buf, size, offset);
   if (res == -1) res = -errno;
-  close(fd);
-  //client.SendString("Pid: " + to_string(getpid()));
+  close(tmp_fd);
+  
+  // If the operation succeeds, (atomically) rename the tmp file back to the cache directory
+  rename(clientTmpPath.c_str(), clientCachePath.c_str());
+
   //kill(getpid(), SIGKILL);
   return res;
 }
@@ -576,6 +590,25 @@ static int client_rename(const char *from, const char *to) {
   return 0; 
 }
 
+/*
+ *  Utility function: copies a file.
+ */
+static int file_copy(string sourcePath, string destPath) {
+  char buf[1];
+  size_t fileSize;
+
+  FILE* source = fopen(sourcePath.c_str(), "rb");
+  FILE* dest = fopen(destPath.c_str(), "wb");
+
+  while (fileSize = fread(buf, 1, 1, source)) {
+    client.SendString("Copying a byte to the temp folder");
+    fwrite(buf, 1, fileSize, dest);
+  }
+
+  fclose(source);
+  fclose(dest);
+}
+
 
 // All these attributes must appear here in this exact order!
 static struct fuse_operations client_oper = {
@@ -630,6 +663,7 @@ int main(int argc, char *argv[]) {
 
   //clientCacheDirectory = "/home/justin/cs739/p2/afs/clientDir";
   clientCacheDirectory = argv[argc - 1];
+  clientTmpDirectory = "/tmp";
 
   return fuse_main(argc - 1, args, &client_oper, NULL);
   //return 0;

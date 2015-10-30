@@ -351,19 +351,19 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   struct stat st;
   if (stat(clientPath.c_str(), &st) == -1) return -errno;
   size_t size = st.st_size;
-  GetAttrResponse attrResponse = client.GetAttr(stringpath);
-  int res = attrResponse.res();
-  if (res == -1) return -errno;
+  //GetAttrResponse attrResponse = client.GetAttr(stringpath);
+  //int res = attrResponse.res();
+  //if (res == -1) return -errno;
   //if (attrResponse.mtime() < st.st_mtime) {
-  client.SendString("LOCAL FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
-  client.SendString("SERVER FILE: " + stringpath + " atime: " + to_string(attrResponse.atime()) + " mtime: " + to_string(attrResponse.mtime()) + " ctime: " + to_string(attrResponse.ctime()));
+  //client.SendString("LOCAL FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
+  //client.SendString("SERVER FILE: " + stringpath + " atime: " + to_string(attrResponse.atime()) + " mtime: " + to_string(attrResponse.mtime()) + " ctime: " + to_string(attrResponse.ctime()));
   //client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
   if (st.st_mtime > st.st_atime) {
     int fd = open_local_file(clientPath, O_RDONLY);
     if (fd == -1) return -errno;
   
     char buf[size];
-    res = pread(fd, &buf, size, 0); 
+    int res = pread(fd, &buf, size, 0); 
     if (res == -1) return -errno;
     close(fd);
 
@@ -372,6 +372,7 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
     WriteFileResponse response = client.WriteWholeFile(stringpath, data, size);
     res = response.res();
     if (res == -1) return -errno;
+    // here we know that the server correctly wrote the file properly
   } else {
     client.SendString("File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
   }

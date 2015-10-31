@@ -345,36 +345,39 @@ static int write_new_file(int fd, string &buf, size_t size) {
 }
 
 static int client_release(const char *path, struct fuse_file_info *fi) {
+  
   string stringpath(path);
-  string clientPath = clientCacheDirectory + stringpath;
+  string clientCacheFilePath = clientCacheDirectory + stringpath;
 
-  struct stat st;
-  if (stat(clientPath.c_str(), &st) == -1) return -errno;
-  size_t size = st.st_size;
-  //GetAttrResponse attrResponse = client.GetAttr(stringpath);
-  //int res = attrResponse.res();
-  //if (res == -1) return -errno;
-  //if (attrResponse.mtime() < st.st_mtime) {
-  //client.SendString("LOCAL FILE: " + stringpath + " atime: " + to_string(st.st_atime) + " mtime: " + to_string(st.st_mtime) + " ctime: " + to_string(st.st_ctime));
-  //client.SendString("SERVER FILE: " + stringpath + " atime: " + to_string(attrResponse.atime()) + " mtime: " + to_string(attrResponse.mtime()) + " ctime: " + to_string(attrResponse.ctime()));
-  //client.SendString("FILE: " + stringpath + " write: " + to_string(fi->flush));
-  if (st.st_mtime > st.st_atime) {
-    int fd = open_local_file(clientPath, O_RDONLY);
+  // Retrieve statistics about the file in the client cache folder
+  struct stat clientCacheFileStat;
+  if (stat(clientCacheFilePath.c_str(), &clientCacheFileStat) == -1) return -errno;
+  size_t clientCacheFileSize = clientCacheFileStat.st_size;
+
+  // Retrieve statistics about the file on the server
+  GetAttrResponse serverFileAttrResponse = client.GetAttr(stringpath);
+  int res = serverFileAttrResponse.res();
+  if (res == -1) return -errno;
+
+  // If the server file was last modified before the client cache file, then push the client cache file.
+  // MC: Previous if-condition compared access time vs. modified time. Why is that? It didn't work in some cases.
+  if (clientCacheFileStat.st_mtime > serverFileAttrResponse.mtime()) {
+    int fd = open_local_file(clientCacheFilePath, O_RDONLY);
     if (fd == -1) return -errno;
   
-    char buf[size];
-    int res = pread(fd, &buf, size, 0); 
+    char buf[clientCacheFileSize];
+    int res = pread(fd, &buf, clientCacheFileSize, 0); 
     if (res == -1) return -errno;
     close(fd);
 
-    string data = string(buf);
-    client.SendString("File: " + stringpath + " Updating file on server.");
-    WriteFileResponse response = client.WriteWholeFile(stringpath, data, size);
+    string clientCacheFileData = string(buf);
+    client.SendString("RELEASE File: " + stringpath + " Updating file on server.");
+    WriteFileResponse response = client.WriteWholeFile(stringpath, clientCacheFileData, clientCacheFileSize);
     res = response.res();
     if (res == -1) return -errno;
     // here we know that the server correctly wrote the file properly
   } else {
-    client.SendString("File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
+    client.SendString("RELEASE File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
   }
   return 0;
 }
@@ -484,22 +487,68 @@ static int client_mknod(const char *path, mode_t mode, dev_t rdev) {
 }
 
 static int client_mkdir(const char *path, mode_t mode) {
+  
+  // Send the RPC instruction to make the directory on the server
   string stringpath(path);
   MkDirResponse response = client.MkDir(stringpath, mode);
-
   int res = response.res();
   if (res == -1) return -errno;
+
+  // If server mkdir works correctly, also need to create this directory in the client cache
+  string cacheMkdirPath = clientCacheDirectory + path;
+  client.SendString("CACHE MKDIR: " + cacheMkdirPath);
+  res = mkdir(cacheMkdirPath.c_str(), mode);
+  if (res == -1) 
+  {
+    client.SendString("CACHE MKDIR failed! ErrNo =  " + errno);
+    return -errno;
+  }
+
+  // If server mkdir works correctly, also need to create this directory in the client tmp folder
+  string tmpMkdirPath = clientTmpDirectory + path;
+  client.SendString("TMP MKDIR: " + tmpMkdirPath);
+  res = mkdir(tmpMkdirPath.c_str(), mode);
+  if (res == -1) 
+  {
+    client.SendString("TMP MKDIR failed! ErrNo =  " + errno);
+    return -errno;
+  }
   
   return 0;
 }
 
 static int client_rmdir(const char *path) {
+  
+  // Send the RPC instruction to remove the directory on the server
   string stringpath(path);
   RmDirResponse response = client.RmDir(stringpath);
-
   int res = response.res();
-  if (res == -1) return -errno;
- 
+  if (res == -1) 
+  {
+    client.SendString("SERVER RMDIR failed! ErrNo =  " + errno);
+    return -errno;
+  }
+
+  // If server rmdir works correctly, also need to remove this directory in the client cache
+  string cacheRmdirPath = clientCacheDirectory + path;
+  client.SendString("CACHE RMDIR: " + cacheRmdirPath);
+  res = rmdir(cacheRmdirPath.c_str());
+  if (res == -1) 
+  {
+    client.SendString("CACHE RMDIR failed! ErrNo =  " + errno);
+    return -errno;
+  }
+
+  // If server rmdir works correctly, also need to remove this directory in the client tmp folder
+  string tmpRmdirPath = clientTmpDirectory + path;
+  client.SendString("TMP RMDIR: " + tmpRmdirPath);
+  res = rmdir(tmpRmdirPath.c_str());
+  if (res == -1) 
+  {
+    client.SendString("TMP RMDIR failed! ErrNo =  " + errno);
+    return -errno;
+  }
+
   return 0;
 }
 

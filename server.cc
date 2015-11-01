@@ -241,23 +241,41 @@ class AfsServiceImpl final : public AfsService::Service {
                         WriteFileResponse *response) override {
     int fd;
     int res;
-    string path = serverpath + request->path();
-    cout << "File: " + path + " Writing the WHOLE file back to the server. Data: " << request->buf() << endl;
-    fd = open(path.c_str(), O_CREAT | O_RDWR | O_TRUNC);
+    //string path = serverpath + request->path();
+    string path = request->path();
+    string temppath = "/tmp" + path;
+    cout << "File: " + temppath + " Writing the WHOLE file back to the server. Data: " << request->buf() << endl;
+    fd = open(temppath.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0666);
     // DANGER! If the server crashes here the file will be lost
     // also do similar thing as the client. First write to a temporary file, 
     // then atomically rename it to the correct name.
     // return failre if the write is not successful so that the client knows
     // not to update the cache
-    //kill(getpid(), SIGKILL);
+
+    if (failOnWrite1) {
+      kill(getpid(), SIGKILL);
+    }
+
     if (fd == -1) return Status::CANCELLED;
 
     string buf = request->buf();
     size_t size = request->size();
     res = pwrite(fd, buf.c_str(), size, 0);
+    fsync(fd);
     close(fd);
 
-    response->set_res(res);
+    
+
+    int renamed = -1;
+    // atomically rename the temp file to the real file
+    string realpath = serverpath + path;
+    renamed = rename(temppath.c_str(), realpath.c_str());
+
+    if (failOnWrite2) {
+      kill(getpid(), SIGKILL);
+    }
+
+    response->set_res(renamed);
     return Status::OK;
   }
 
@@ -301,19 +319,23 @@ class AfsServiceImpl final : public AfsService::Service {
   }
 
   public:
-    AfsServiceImpl(string path) {
+    AfsServiceImpl(string path, int fail1, int fail2) {
       serverpath = path; 
+      failOnWrite1 = fail1;
+      failOnWrite2 = fail2;
     }
 
   private:
     string serverpath;
+    int failOnWrite1;
+    int failOnWrite2;
   
 };
 
-void RunServer(string &directory) {
+void RunServer(string &directory, int failOnWrite1, int failOnWrite2) {
   string server_address("0.0.0.0:50051");
   // This is where the files live on the server.
-  AfsServiceImpl service(directory);
+  AfsServiceImpl service(directory, failOnWrite1, failOnWrite2);
 
   ServerBuilder builder;
 
@@ -327,13 +349,23 @@ void RunServer(string &directory) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 2 || argc > 2) {
+  if (argc < 2 || argc > 3) {
     cout << "Invalid number of arguments. Quitting..." << endl;
     exit(0);
   }
   string directory(argv[1]);
+  int failOnWrite1 = 0;
+  int failOnWrite2 = 0;
   cout << "Directory: " << directory << endl;
   cout << "Server Running..." << endl;
-  RunServer(directory);
+  if (argc == 3) {
+    string fail = string(argv[2]);
+    if (fail.compare("failOnWrite1") == 0) {
+      failOnWrite1 = 1;
+    } else if (fail.compare("failOnWrite2") == 0) {
+      failOnWrite2 = 1;
+    }
+  }
+  RunServer(directory, failOnWrite1, failOnWrite2);
   return 0;
 }

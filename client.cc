@@ -62,6 +62,7 @@ using afsgrpc::RenameResponse;
 using namespace std;
 
 static int file_copy(string sourcePath, string destPath);
+static int failOnWrite = 0;
 
 // Defines a stub which you call into to call server functions
 class AfsClient {
@@ -395,8 +396,10 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
     client.SendString("RELEASE File: " + stringpath + " Updating file on server. Data: " + clientCacheFileData + " Size: " + to_string(clientCacheFileSize));
     WriteFileResponse response = client.WriteWholeFile(stringpath, clientCacheFileData, clientCacheFileSize);
     res = response.res();
+    client.SendString("Response: " + to_string(res));
     if (res == -1) return -errno;
     // here we know that the server correctly wrote the file properly
+    client.SendString("Client renaming file to: " + clientCacheFilePath);
     rename(clientTmpPath.c_str(), clientCacheFilePath.c_str());
   } else {
     client.SendString("RELEASE File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
@@ -408,6 +411,16 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
 static int client_open(const char *path, struct fuse_file_info *fi) {
   string stringpath = string(path);
   string clientPath = clientCacheDirectory + string(path);
+  string clientTmpPath = clientTmpDirectory + stringpath;
+
+  // check if a a tmp file exists. If it does, it means we crashed during a write
+  // data could be corrupt, so we'll just delete it
+  ifstream tmpfile(clientTmpPath);
+  if (tmpfile.good()) {
+    int res = remove(clientTmpPath.c_str());
+    if (res == -1) return -errno;
+  }
+
   // test if the file is cached
   ifstream infile(clientPath);
   if (infile.good()) {
@@ -598,13 +611,16 @@ static int client_write(const char *path, const char *buf, size_t size,
   tmp_fd = open(clientTmpPath.c_str(), O_CREAT | O_WRONLY);  
   if (tmp_fd == -1) return -errno;
   res = pwrite(tmp_fd, buf, size, offset);
+  fsync(tmp_fd);
   if (res == -1) res = -errno;
   close(tmp_fd);
   
   // If the operation succeeds, (atomically) rename the tmp file back to the cache directory
   //rename(clientTmpPath.c_str(), clientCachePath.c_str());
 
-  //kill(getpid(), SIGKILL);
+  if (failOnWrite) {
+    kill(getpid(), SIGKILL);
+  }
   return res;
 }
 
@@ -723,24 +739,31 @@ static struct fuse_operations client_oper = {
 };
 
 int main(int argc, char *argv[]) { 
-  if (argc < 3 || argc > 3) {
+  if (argc < 3 || argc > 4) {
     cout << "Invalid number of arguments. Quitting..." << endl;
     cout << "Third argument must be an absolute path." << endl;
     exit(0);
   }
 
-  char *args[argc];
-  for (int i = 0; i < argc - 1; i++) {
+  int numArgs = 1;
+  if (argc == 4) {
+    numArgs = 2; 
+    string fail = string(argv[argc - 1]);
+    if (fail.compare("failOnWrite") == 0) {
+      failOnWrite = 1;
+    }
+  }
+  char *args[argc - numArgs];
+  for (int i = 0; i < argc - numArgs; i++) {
     int length = strlen(argv[i]);
     args[i] = new char[length + 1];
     strncpy(args[i], argv[i], length);
     args[i][length] = '\0';
   }
 
-  //clientCacheDirectory = "/home/justin/cs739/p2/afs/clientDir";
-  clientCacheDirectory = argv[argc - 1];
-  clientTmpDirectory = "/tmp";
-
-  return fuse_main(argc - 1, args, &client_oper, NULL);
+  clientTmpDirectory = "/home/justin/cs739/p2/afs/cs739p2/tmp";
+  clientCacheDirectory = argv[argc - numArgs];
+  //clientTmpDirectory = "/tmp";
+  return fuse_main(argc - numArgs, args, &client_oper, NULL);
   //return 0;
 }

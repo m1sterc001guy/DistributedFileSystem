@@ -357,11 +357,31 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   // Retrieve statistics about the file on the server
   GetAttrResponse serverFileAttrResponse = client.GetAttr(stringpath);
   int res = serverFileAttrResponse.res();
-  if (res == -1) return -errno;
+  if (res == -1) 
+  {
+    client.SendString("RELEASE Error: could not read file from server");
+    return -errno;
+  }
+
+  /*
+  client.SendString("RELEASE: clientCacheFileStat atime=");
+  client.SendString(to_string(clientCacheFileStat.st_atime));
+  client.SendString("RELEASE: clientCacheFileStat mtime=");
+  client.SendString(to_string(clientCacheFileStat.st_mtime));
+  client.SendString("RELEASE: clientCacheFileStat ino=");
+  client.SendString(to_string(clientCacheFileStat.st_ino));
+  client.SendString("RELEASE: serverFileAttrResponse atime()=");
+  client.SendString(to_string(serverFileAttrResponse.atime()));
+  client.SendString("RELEASE: serverFileAttrResponse mtime()=");
+  client.SendString(to_string(serverFileAttrResponse.mtime()));
+  client.SendString("RELEASE: serverFileAttrResponse ino()=");
+  client.SendString(to_string(serverFileAttrResponse.ino()));
+  */
 
   // If the server file was last modified before the client cache file, then push the client cache file.
+  // If this a new file (never existed on the server before) then push the cache file.
   // MC: Previous if-condition compared access time vs. modified time. Why is that? It didn't work in some cases.
-  if (clientCacheFileStat.st_mtime > serverFileAttrResponse.mtime()) {
+  if (clientCacheFileStat.st_mtime >= serverFileAttrResponse.mtime()) {
     int fd = open_local_file(clientCacheFilePath, O_RDONLY);
     if (fd == -1) return -errno;
   
@@ -553,15 +573,13 @@ static int client_rmdir(const char *path) {
 }
 
 static int client_write(const char *path, const char *buf, size_t size,
-                        off_t offset, struct fuse_file_info *fi) {
-  // TODO: Write all data to an intermediate file
-  // when the file is released, and the data has successfully been written
-  // back to the server, atomically rename it to the correct name
+                        off_t offset, struct fuse_file_info *fi) 
+{
+  // Variables
   int fd;
   int file_size;
   int res;
   int tmp_fd;
-  
   string clientCachePath = clientCacheDirectory + string(path);
   string clientTmpPath = clientTmpDirectory + string(path);
 
@@ -644,15 +662,17 @@ static int client_rename(const char *from, const char *to) {
  *  Utility function: copies a file.
  */
 static int file_copy(string sourcePath, string destPath) {
-  char buf[1];
-  size_t fileSize;
-
+  
+  size_t bufSize = 1;
+  size_t fileSize;    
+  char buf[bufSize];
+  
   FILE* source = fopen(sourcePath.c_str(), "rb");
   FILE* dest = fopen(destPath.c_str(), "wb");
 
-  while (fileSize = fread(buf, 1, 1, source)) {
-    client.SendString("Copying a byte to the temp folder");
-    fwrite(buf, 1, fileSize, dest);
+  while (fileSize = fread(buf, bufSize, 1, source)) {
+    client.SendString("Copying data to the temp folder");
+    fwrite(buf, bufSize, fileSize, dest);
   }
 
   fclose(source);

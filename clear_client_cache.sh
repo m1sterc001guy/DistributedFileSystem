@@ -1,1 +1,1 @@
-rm clientDir/*
+rm -rf clientDir/*

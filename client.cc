@@ -348,10 +348,11 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   
   string stringpath(path);
   string clientCacheFilePath = clientCacheDirectory + stringpath;
+  string clientTmpPath = clientTmpDirectory + stringpath;
 
   // Retrieve statistics about the file in the client cache folder
   struct stat clientCacheFileStat;
-  if (stat(clientCacheFilePath.c_str(), &clientCacheFileStat) == -1) return -errno;
+  if (stat(clientTmpPath.c_str(), &clientCacheFileStat) == -1) return -errno;
   size_t clientCacheFileSize = clientCacheFileStat.st_size;
 
   // Retrieve statistics about the file on the server
@@ -382,7 +383,7 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
   // If this a new file (never existed on the server before) then push the cache file.
   // MC: Previous if-condition compared access time vs. modified time. Why is that? It didn't work in some cases.
   if (clientCacheFileStat.st_mtime >= serverFileAttrResponse.mtime()) {
-    int fd = open_local_file(clientCacheFilePath, O_RDONLY);
+    int fd = open_local_file(clientTmpPath, O_RDONLY);
     if (fd == -1) return -errno;
   
     char buf[clientCacheFileSize];
@@ -391,11 +392,12 @@ static int client_release(const char *path, struct fuse_file_info *fi) {
     close(fd);
 
     string clientCacheFileData = string(buf);
-    client.SendString("RELEASE File: " + stringpath + " Updating file on server.");
+    client.SendString("RELEASE File: " + stringpath + " Updating file on server. Data: " + clientCacheFileData + " Size: " + to_string(clientCacheFileSize));
     WriteFileResponse response = client.WriteWholeFile(stringpath, clientCacheFileData, clientCacheFileSize);
     res = response.res();
     if (res == -1) return -errno;
     // here we know that the server correctly wrote the file properly
+    rename(clientTmpPath.c_str(), clientCacheFilePath.c_str());
   } else {
     client.SendString("RELEASE File: " + stringpath + " Fsync called, but the timestamp says not to update the file.");
   }
@@ -525,6 +527,7 @@ static int client_mkdir(const char *path, mode_t mode) {
   }
 
   // If server mkdir works correctly, also need to create this directory in the client tmp folder
+  /*
   string tmpMkdirPath = clientTmpDirectory + path;
   client.SendString("TMP MKDIR: " + tmpMkdirPath);
   res = mkdir(tmpMkdirPath.c_str(), mode);
@@ -533,6 +536,7 @@ static int client_mkdir(const char *path, mode_t mode) {
     client.SendString("TMP MKDIR failed! ErrNo =  " + errno);
     return -errno;
   }
+  */
   
   return 0;
 }
@@ -559,6 +563,7 @@ static int client_rmdir(const char *path) {
     return -errno;
   }
 
+  /*
   // If server rmdir works correctly, also need to remove this directory in the client tmp folder
   string tmpRmdirPath = clientTmpDirectory + path;
   client.SendString("TMP RMDIR: " + tmpRmdirPath);
@@ -568,6 +573,7 @@ static int client_rmdir(const char *path) {
     client.SendString("TMP RMDIR failed! ErrNo =  " + errno);
     return -errno;
   }
+  */
 
   return 0;
 }
@@ -596,7 +602,7 @@ static int client_write(const char *path, const char *buf, size_t size,
   close(tmp_fd);
   
   // If the operation succeeds, (atomically) rename the tmp file back to the cache directory
-  rename(clientTmpPath.c_str(), clientCachePath.c_str());
+  //rename(clientTmpPath.c_str(), clientCachePath.c_str());
 
   //kill(getpid(), SIGKILL);
   return res;
